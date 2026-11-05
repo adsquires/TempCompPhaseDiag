@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Temperature–composition phase diagram</title>
+<style>
+:root{--bg:#fff;--fg:#111;--mut:#666;--A:#1d3fe8;--B:#e3151c;--arrow:#b9b9b9;--arrowS:#555;--shade:rgba(120,120,120,.12);
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#16171a;--fg:#eee;--mut:#9a9a9a;--A:#5b7bff;--B:#ff5a5f;--arrow:#6b6b6b;--arrowS:#bbb;--shade:rgba(200,200,200,.1);color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#16171a;--fg:#eee;--mut:#9a9a9a;--A:#5b7bff;--B:#ff5a5f;--arrow:#6b6b6b;--arrowS:#bbb;--shade:rgba(200,200,200,.1);color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 "Helvetica Neue",Arial,sans-serif}
+.wrap{display:flex;flex-direction:column;align-items:center;gap:0;padding:16px}
+svg{max-width:100%;height:auto;touch-action:none;user-select:none;-webkit-user-select:none}
+.col{width:360px;max-width:100%}
+.arrow{cursor:grab;fill:var(--arrow);stroke:var(--arrowS);stroke-width:1}
+.arrow:focus{outline:none;stroke:var(--fg);stroke-width:2}
+.arrow:active{cursor:grabbing}
+text{fill:var(--fg);font-family:inherit}
+.read{display:grid;grid-template-columns:auto auto;gap:2px 16px;justify-content:center;font-variant-numeric:tabular-nums;margin-top:8px;font-size:15px}
+.read span:nth-child(odd){color:var(--mut)}
+.mol{border-collapse:collapse;margin:12px auto 0;font-variant-numeric:tabular-nums;font-size:15px}
+.mol th,.mol td{padding:3px 12px;text-align:right}
+.mol thead th{font-weight:normal}
+.mol tbody th{text-align:left;font-weight:normal;color:var(--mut)}
+.mol .tot th,.mol .tot td{border-top:1px solid var(--mut)}
+.mol .a{color:var(--A)}.mol .b{color:var(--B)}.mol caption{caption-side:bottom;color:var(--mut);font-size:13px;padding-top:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+ <div class="col"><svg id="top" viewBox="0 0 360 670" role="img" aria-label="Temperature composition phase diagram"></svg></div>
+ <div class="col">
+
+  <table class="mol"><thead><tr><th></th><th class="a">mol A</th><th class="b">mol B</th><th>total</th></tr></thead><tbody><tr><th>Gas</th><td id="gA"></td><td id="gB"></td><td id="gN"></td></tr><tr><th>Liquid</th><td id="lA"></td><td id="lB"></td><td id="lN"></td></tr><tr class="tot"><th>Total</th><td id="tA"></td><td id="tB"></td><td id="tN"></td></tr></tbody><caption>100 mol total</caption></table>
+  <div class="read">
+   <span>Temperature</span><span id="rT"></span>
+   <span>Overall x<sub>B</sub></span><span id="rX"></span>
+   <span>Liquid x<sub>B</sub></span><span id="rl"></span>
+   <span>Gas x<sub>B</sub></span><span id="rg"></span>
+   <span>Fraction gas</span><span id="rf"></span>
+  </div>
+ </div>
+</div>
+<script>
+const NS="http://www.w3.org/2000/svg";
+// ---- model: ideal-like binary, A boils higher than B ----
+const TA=0.75, TB=0.25, ALPHA=2.4;           // normalised boiling points, relative volatility
+const g = x => ALPHA*x/(1+(ALPHA-1)*x);       // gas composition in equilibrium with liquid x
+const xLiq = tau => 1-g(1-(1-tau)) ;               // liquid boundary: gas boundary rotated 180° about the lens centre
+const xGas = tau => g(1-tau);                 // gas (dew) boundary
+function equilibrium(x,T){
+  const tau=(T-TB)/(TA-TB);
+  if(tau<=0) return {xl:x,xg:x,f:0,phase:"liquid"};
+  if(tau>=1) return {xl:x,xg:x,f:1,phase:"gas"};
+  const xl=xLiq(tau), xg=xGas(tau);
+  if(x<=xl) return {xl:x,xg:x,f:0,phase:"liquid"};
+  if(x>=xg) return {xl:x,xg:x,f:1,phase:"gas"};
+  return {xl,xg,f:(x-xl)/(xg-xl),phase:"2-phase"};   // lever rule
+}
+// ---- state ----
+let X=0.4, T=0.55;
+// ---- top plot geometry ----
+const L=70,W=260,TOP=16,H=230,BOT=TOP+H;
+const px=x=>L+x*W, py=t=>BOT-t*H;
+const topSvg=document.getElementById("top");
+const PAINT=new Set(["fill","stroke"]);
+const setA=(e,k,v)=>{if(PAINT.has(k))e.style.setProperty(k,v);else e.setAttribute(k,v)};
+const el=(n,a,p=topSvg)=>{const e=document.createElementNS(NS,n);for(const k in a)setA(e,k,a[k]);p.appendChild(e);return e};
+const tx=(s,a)=>{const e=el("text",a);e.textContent=s;return e};
+// grid and numbered axes (numbers on the top and right edges so the sliding arrows never cover them)
+for(let i=0;i<=10;i++){
+  const v=i/10, s=i===0?"0":i===10?"1":v.toFixed(1);
+  if(i>0&&i<10){
+    el("line",{x1:px(v),x2:px(v),y1:TOP,y2:BOT,stroke:"var(--mut)","stroke-width":0.6,opacity:0.4});
+
+  }
+
+
+}
+// temperature axis: 60-100 deg C (pure B boils at 70, pure A at 90)
+for(let c=60;c<=100;c+=5){
+  const y=py((c-60)/40);
+  if(c>60&&c<100) el("line",{x1:L,x2:L+W,y1:y,y2:y,stroke:"var(--mut)","stroke-width":0.6,opacity:0.4});
+
+}
+el("rect",{x:L,y:TOP,width:W,height:H,fill:"none",stroke:"var(--fg)","stroke-width":1.2});
+// curves
+const pts=(f)=>{let s="";for(let i=0;i<=50;i++){const tau=i/50;s+=f(tau)+" "}return s};
+const bub=pts(t=>px(xLiq(t))+","+py(TB+(TA-TB)*t)), dew=pts(t=>px(xGas(t))+","+py(TB+(TA-TB)*t));
+el("polygon",{points:bub+" "+dew.trim().split(" ").reverse().join(" "),fill:"var(--shade)",stroke:"none"});
+el("polyline",{points:bub,fill:"none",stroke:"var(--fg)","stroke-width":1.2});
+el("polyline",{points:dew,fill:"none",stroke:"var(--fg)","stroke-width":1.2});
+tx("Gas",{x:L+W-8,y:TOP+18,"text-anchor":"end","font-size":13});
+tx("Liquid",{x:L+8,y:BOT-10,"font-size":13});
+tx("2-phase",{x:px(.74),y:py(.37),"font-size":11,"text-anchor":"middle"});
+// axis labels
+tx("Temperature (°C)",{transform:`translate(18 ${TOP+H/2}) rotate(-90)`,"text-anchor":"middle","font-size":15});
+tx("Pure A",{x:L,y:318,"font-size":18,fill:"var(--A)",style:"fill:var(--A)"});
+tx("Pure B",{x:L+W,y:318,"text-anchor":"end","font-size":18,style:"fill:var(--B)"});
+tx("x",{x:px(.5)-4,y:318,"text-anchor":"middle","font-size":18});
+tx("B",{x:px(.5)+6,y:322,"font-size":12});
+// dynamic pieces
+const hline=el("line",{stroke:"var(--fg)","stroke-width":1.2});
+const vl=el("line",{stroke:"var(--fg)","stroke-width":1.2}), vg=el("line",{stroke:"var(--fg)","stroke-width":1.2});
+const hl=el("polygon",{fill:"var(--fg)"}), hg=el("polygon",{fill:"var(--fg)"});
+const dot=el("circle",{r:5,fill:"#0a1a8f",stroke:"var(--bg)","stroke-width":1.5,style:"cursor:grab"});
+const aT=el("polygon",{class:"arrow",points:"0,0 -15,-15 -15,-7 -40,-7 -40,7 -15,7 -15,15",tabindex:0,role:"slider","aria-label":"Temperature"});
+const aX=el("polygon",{class:"arrow",points:"0,0 -15,15 -7,15 -7,40 7,40 7,15 15,15",tabindex:0,role:"slider","aria-label":"Composition x B"});
+// axis numbers on the left and bottom, drawn after the arrows so the arrows slide behind them
+const numStyle="fill:var(--fg);pointer-events:none";
+for(let i=0;i<=10;i++){const v=i/10;tx(i===0?"0":i===10?"1":v.toFixed(1),{x:px(v),y:BOT+13,"text-anchor":"middle","font-size":10,style:numStyle});}
+for(let c=60;c<=100;c+=5)tx(String(c),{x:L-6,y:py((c-60)/40)+3.5,"text-anchor":"end","font-size":10,style:numStyle});
+// ---- bottom plot ----
+const bot=topSvg;   // same SVG as the phase diagram, so the two plots share one x-axis
+const C=10,R=10,CS=26,BX=L,BY=372;   // grid spans exactly the plot width: C*CS = W
+const be=(n,a)=>{const e=document.createElementNS(NS,n);for(const k in a)setA(e,k,a[k]);bot.appendChild(e);return e};
+const bt=(s,y)=>{const e=be("text",{x:BX,y,"font-size":20});e.textContent=s};
+bt("GAS",BY-10); bt("LIQUID",BY+R*CS+24);
+const dots=be("g",{});
+be("rect",{x:BX,y:BY,width:C*CS,height:R*CS,fill:"none",stroke:"var(--fg)","stroke-width":1.5});
+const split=be("line",{x1:BX,x2:BX+C*CS,stroke:"var(--fg)","stroke-width":3});
+function drawBottom(e){
+  const ng=Math.round(e.f*R);
+  let s="";
+  for(let r=0;r<R;r++){
+    const x=r<ng?e.xg:e.xl, k=Math.round(x*C);        // red (B) circles fill from the left
+    for(let c=0;c<C;c++)
+      s+=`<circle cx="${BX+CS/2+c*CS}" cy="${BY+CS/2+r*CS}" r="10" style="fill:var(${c<k?"--B":"--A"})"/>`;
+  }
+  dots.innerHTML=s;
+  const y=BY+ng*CS; split.setAttribute("y1",y); split.setAttribute("y2",y);
+}
+// ---- update ----
+const f3=v=>v.toFixed(2);
+function update(){
+  const e=equilibrium(X,T), y=py(T);
+  dot.setAttribute("cx",px(X)); dot.setAttribute("cy",y);
+  aT.setAttribute("transform",`translate(${L-4} ${y})`);
+  aX.setAttribute("transform",`translate(${px(X)} ${BOT+4})`);
+  const tau=(T-TB)/(TA-TB), inLens=tau>0&&tau<1;
+  // horizontal tie line (only meaningful inside the lens), plus vertical arrows to each boundary
+  const show=inLens?"":"none";
+  const xl=inLens?xLiq(tau):X, xg=inLens?xGas(tau):X;
+  hline.setAttribute("x1",px(xl));hline.setAttribute("x2",px(xg));hline.setAttribute("y1",y);hline.setAttribute("y2",y);
+  const tip=BOT-8, tipT=TOP+8;
+  vl.setAttribute("x1",px(e.xl));vl.setAttribute("x2",px(e.xl));vl.setAttribute("y1",y);vl.setAttribute("y2",tip-6);
+  vg.setAttribute("x1",px(e.xg));vg.setAttribute("x2",px(e.xg));vg.setAttribute("y1",y);vg.setAttribute("y2",tipT+6);
+  hl.setAttribute("points",`${px(e.xl)},${tip} ${px(e.xl)-4},${tip-9} ${px(e.xl)+4},${tip-9}`);
+  hg.setAttribute("points",`${px(e.xg)},${tipT} ${px(e.xg)-4},${tipT+9} ${px(e.xg)+4},${tipT+9}`);
+  [hline].forEach(n=>n.style.display=show);
+  vl.style.display=hl.style.display=(e.f<1)?"":"none";
+  vg.style.display=hg.style.display=(e.f>0)?"":"none";
+  aT.setAttribute("aria-valuenow",f3(T)); aX.setAttribute("aria-valuenow",f3(X));
+  drawBottom(e);
+  document.getElementById("rT").textContent=(60+40*T).toFixed(1)+" °C";
+  document.getElementById("rX").textContent=f3(X);
+  document.getElementById("rl").textContent=e.f<1?f3(e.xl):"–";
+  document.getElementById("rg").textContent=e.f>0?f3(e.xg):"–";
+  document.getElementById("rf").textContent=f3(e.f)+" ("+e.phase+")";
+  // moles: 100 mol total, lever rule gives the split between phases
+  const N=100, nG=N*e.f, nL=N-nG, m=v=>v.toFixed(1), set=(id,v)=>document.getElementById(id).textContent=m(v);
+  set("gA",nG*(1-e.xg)); set("gB",nG*e.xg); set("gN",nG);
+  set("lA",nL*(1-e.xl)); set("lB",nL*e.xl); set("lN",nL);
+  set("tA",nG*(1-e.xg)+nL*(1-e.xl)); set("tB",nG*e.xg+nL*e.xl); set("tN",N);
+}
+// ---- interaction ----
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+function svgPt(ev){const p=topSvg.createSVGPoint();p.x=ev.clientX;p.y=ev.clientY;return p.matrixTransform(topSvg.getScreenCTM().inverse())}
+function drag(node,fn){
+  node.addEventListener("pointerdown",ev=>{node.setPointerCapture(ev.pointerId);fn(svgPt(ev));ev.preventDefault();
+    const mv=e=>fn(svgPt(e)), up=()=>{node.removeEventListener("pointermove",mv);node.removeEventListener("pointerup",up)};
+    node.addEventListener("pointermove",mv);node.addEventListener("pointerup",up)});
+}
+const setX=p=>{X=clamp((p.x-L)/W,0.01,0.99);update()};
+const setT=p=>{T=clamp((BOT-p.y)/H,0.05,0.97);update()};
+drag(aX,setX); drag(aT,setT);
+drag(dot,p=>{setX(p);setT(p)});
+aX.addEventListener("keydown",e=>{if(e.key==="ArrowLeft"||e.key==="ArrowRight"){X=clamp(X+(e.key==="ArrowRight"?.01:-.01),.01,.99);update();e.preventDefault()}});
+aT.addEventListener("keydown",e=>{if(e.key==="ArrowUp"||e.key==="ArrowDown"){T=clamp(T+(e.key==="ArrowUp"?.01:-.01),.05,.97);update();e.preventDefault()}});
+update();
+</script>
+</body>
+</html>
